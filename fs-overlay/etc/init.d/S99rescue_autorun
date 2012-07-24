@@ -1,0 +1,37 @@
+#!/bin/bash
+#
+# Extract and run the rescue autorun package...
+#
+
+case "$1" in
+    start)
+        shopt -s nullglob
+        for file in /mnt/sysconfig/rescue/autorun*.tgz ; do
+		TMPDIR=/tmp/autorun/`basename $file`
+		echo "Extracting rescue autorun script $file..."
+		mkdir -p "$TMPDIR"
+		cd "$TMPDIR"
+		tar -xzvf "$file"
+
+		if [ -f "$TMPDIR/autorun.sh" ]; then
+			echo "Starting rescue autorun script..."
+			/bin/sh "$TMPDIR/autorun.sh"
+		fi
+        done
+        for file in /mnt/sysconfig/rescue/autorun*.sh ; do
+		echo "Starting rescue autorun script $file..."
+		/bin/sh "$file"
+	done
+        shopt -u nullglob
+        ;;
+  stop)
+        echo -n "Cleanup autorun temp files..."
+        rm -rf /tmp/autorun
+        ;;
+  *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+esac
+
+exit $?
+
