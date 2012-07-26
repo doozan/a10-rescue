@@ -18,7 +18,7 @@ null::sysinit:/bin/mount -t proc proc /proc
 null::sysinit:/bin/mount -o remount,rw / # REMOUNT_ROOTFS_RW
 null::sysinit:/bin/mkdir -p /dev/pts
 null::sysinit:/bin/mkdir -p /dev/shm
-null::sysinit:/bin/sleep 4 # Wait for SDA devices to become active
+null::sysinit:/bin/sleep 4 # Wait for devices to settle before mounting
 null::sysinit:/bin/mount -a
 null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
