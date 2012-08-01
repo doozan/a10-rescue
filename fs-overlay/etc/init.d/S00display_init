@@ -1,0 +1,16 @@
+#!/bin/bash
+#
+# Extract and run the rescue init packages/scripts...
+#
+
+case "$1" in
+    start)
+        # Draw a light blue screen directly to framebuffer
+        tr '\000' '\222' < /dev/zero > /dev/fb0
+        ;;
+    *)
+        echo "Usage: $0 {start}"
+        exit 1
+esac
+
+exit $?
