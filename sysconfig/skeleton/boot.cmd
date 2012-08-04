@@ -1,0 +1,13 @@
+setenv system.bin 'fatload mmc 0:1 0x43000000 system.bin || fatload mmc 0:1 0x43000000 /rescue/system.bin'
+setenv force_rescue 0
+setenv force_rescue_bootcmd 'if test \$force_rescue -eq 1 || fatload mmc 0 0x45000000 /rescue/force_rescue.txt; then run rescue_bootcmd; fi'
+setenv mmc_root '/dev/mmcblk0p2'
+setenv mmc_rootfstype 'ext2'
+setenv mmc_bootargs 'setenv bootargs console=\$console root=\$mmc_root rootfstype=\$mmc_rootfstype rootwait'
+setenv mmc_boot 'mw 0x44000000 0 1; if ext2load mmc 0:2 0x44000000 /boot/uImage; then if ext2load mmc 0:2 0x45000000 /boot/uInitrd; then bootm 0x44000000 0x45000000; else bootm 0x44000000; fi; else if fatload mmc 0:1 0x44000000 uImage; then if fatload mmc 0:1 0x45000000 uInitrd; then bootm 0x44000000 0x45000000; else bootm 0x44000000; fi; fi; fi;'
+setenv mmc_bootcmd 'run mmc_bootargs ; run mmc_boot'
+setenv rescue_set_bootargs 'setenv bootargs console=\$console'
+setenv rescue_boot 'mw 0x44000000 0 1; fatload mmc 0 0x44000000 /rescue/uImage; if fatload mmc 0 0x45000000 /rescue/uInitrd; then bootm 0x44000000 0x45000000; else bootm 0x44000000; fi'
+setenv rescue_bootcmd 'run rescue_set_bootargs; run rescue_boot'
+setenv bootcmd 'run system.bin ; run force_rescue_bootcmd; run mmc_bootcmd; run rescue_bootcmd; reset'
+setenv boot_mmc 'run bootcmd'
