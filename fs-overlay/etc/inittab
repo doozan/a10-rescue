@@ -24,6 +24,10 @@ null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
 
+# Framebuffer console
+#tty1::respawn:/sbin/getty 38400 tty1
+tty1::respawn:-/bin/bash
+
 # Put a getty on the serial port
 ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100 # GENERIC_SERIAL
 
