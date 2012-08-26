@@ -8,24 +8,24 @@ case "$1" in
         shopt -s nullglob
         for file in /mnt/sysconfig/rescue/autorun*.tgz ; do
 		TMPDIR=/tmp/autorun/`basename $file`
-		echo "Extracting rescue autorun script $file..."
+		echo "Extracting rescue autorun script $file..." | tee /dev/tty1
 		mkdir -p "$TMPDIR"
 		cd "$TMPDIR"
 		tar -xzvf "$file"
 
 		if [ -f "$TMPDIR/autorun.sh" ]; then
-			echo "Starting rescue autorun script..."
-			/bin/sh "$TMPDIR/autorun.sh"
+			echo "Starting rescue autorun script..." | tee /dev/tty1
+			/bin/sh "$TMPDIR/autorun.sh" | tee /dev/tty1
 		fi
         done
         for file in /mnt/sysconfig/rescue/autorun*.sh ; do
-		echo "Starting rescue autorun script $file..."
-		/bin/sh "$file"
+		echo "Starting rescue autorun script $file..." | tee /dev/tty1
+		/bin/sh "$file" | tee /dev/tty1
 	done
         shopt -u nullglob
         ;;
   stop)
-        echo -n "Cleanup autorun temp files..."
+        echo -n "Cleanup autorun temp files..." | tee /dev/tty1
         rm -rf /tmp/autorun
         ;;
   *)
