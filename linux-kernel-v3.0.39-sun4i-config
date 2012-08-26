@@ -1,6 +1,6 @@
 #
 # Automatically generated make config: don't edit
-# Linux/arm 3.0.36-sun4i Kernel Configuration
+# Linux/arm 3.0.39 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_CHIP_ID=1123
@@ -293,6 +293,7 @@ CONFIG_SW_DEBUG_UART=0
 # Allwinner A10 options
 #
 # CONFIG_TEGRA_FPGA is not set
+# CONFIG_SUNXI_IGNORE_ATAG_MEM is not set
 
 #
 # Processor Type
@@ -2133,6 +2134,7 @@ CONFIG_VIDEO_MT9V011=m
 #
 # Miscelaneous helper chips
 #
+# CONFIG_VIDEO_VIVI is not set
 # CONFIG_VIDEO_BWQCAM is not set
 # CONFIG_VIDEO_CQCAM is not set
 # CONFIG_VIDEO_W9966 is not set
@@ -2401,9 +2403,9 @@ CONFIG_FB=y
 # CONFIG_FIRMWARE_EDID is not set
 # CONFIG_FB_DDC is not set
 # CONFIG_FB_BOOT_VESA_SUPPORT is not set
-# CONFIG_FB_CFB_FILLRECT is not set
-# CONFIG_FB_CFB_COPYAREA is not set
-# CONFIG_FB_CFB_IMAGEBLIT is not set
+CONFIG_FB_CFB_FILLRECT=y
+CONFIG_FB_CFB_COPYAREA=y
+CONFIG_FB_CFB_IMAGEBLIT=y
 # CONFIG_FB_CFB_REV_PIXELS_IN_BYTE is not set
 CONFIG_FB_SYS_FILLRECT=m
 CONFIG_FB_SYS_COPYAREA=m
@@ -2442,7 +2444,20 @@ CONFIG_LYCHEE_HDMI_SUN4I=y
 # Console display driver support
 #
 CONFIG_DUMMY_CONSOLE=y
-# CONFIG_FRAMEBUFFER_CONSOLE is not set
+CONFIG_FRAMEBUFFER_CONSOLE=y
+# CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY is not set
+# CONFIG_FRAMEBUFFER_CONSOLE_ROTATION is not set
+CONFIG_FONTS=y
+CONFIG_FONT_8x8=y
+CONFIG_FONT_8x16=y
+# CONFIG_FONT_6x11 is not set
+# CONFIG_FONT_7x14 is not set
+# CONFIG_FONT_PEARL_8x8 is not set
+# CONFIG_FONT_ACORN_8x8 is not set
+# CONFIG_FONT_MINI_4x6 is not set
+# CONFIG_FONT_SUN8x16 is not set
+# CONFIG_FONT_SUN12x22 is not set
+# CONFIG_FONT_10x18 is not set
 # CONFIG_LOGO is not set
 CONFIG_SOUND=y
 CONFIG_SOUND_OSS_CORE=y

@@ -1,0 +1,212 @@
+From c854afc4a36606dc3a4234e35b475f478199aec3 Mon Sep 17 00:00:00 2001
+From: Jeff Doozan <jeff@doozan.com>
+Date: Sat, 25 Aug 2012 15:00:02 -0400
+Subject: [PATCH 1/2] Initial fbcon support
+None of this work is my own.  This is just a cleaned version of techn's fbcon commits:
+https://github.com/techn/linux-allwinner/tree/wip/allwinner-v3.0-android-v2/fbcon-v2
+
+---
+ arch/arm/configs/sun4i_defconfig    |   13 ++++--
+ drivers/video/Kconfig               |    3 +
+ drivers/video/sun4i/disp/dev_disp.h |    1 +
+ drivers/video/sun4i/disp/dev_fb.c   |   70 +++++++++++-----------------------
+ 4 files changed, 36 insertions(+), 51 deletions(-)
+
+diff --git a/arch/arm/configs/sun4i_defconfig b/arch/arm/configs/sun4i_defconfig
+index 8824667..c67c593 100644
+--- a/arch/arm/configs/sun4i_defconfig
++++ b/arch/arm/configs/sun4i_defconfig
+@@ -1194,9 +1194,9 @@ CONFIG_FB=y
+ # CONFIG_FIRMWARE_EDID is not set
+ # CONFIG_FB_DDC is not set
+ # CONFIG_FB_BOOT_VESA_SUPPORT is not set
+-# CONFIG_FB_CFB_FILLRECT is not set
+-# CONFIG_FB_CFB_COPYAREA is not set
+-# CONFIG_FB_CFB_IMAGEBLIT is not set
++CONFIG_FB_CFB_FILLRECT=y
++CONFIG_FB_CFB_COPYAREA=y
++CONFIG_FB_CFB_IMAGEBLIT=y
+ # CONFIG_FB_CFB_REV_PIXELS_IN_BYTE is not set
+ # CONFIG_FB_SYS_FILLRECT is not set
+ # CONFIG_FB_SYS_COPYAREA is not set
+@@ -1235,7 +1235,12 @@ CONFIG_LYCHEE_HDMI_SUN4I=m
+ # Console display driver support
+ #
+ CONFIG_DUMMY_CONSOLE=y
+-# CONFIG_FRAMEBUFFER_CONSOLE is not set
++CONFIG_FRAMEBUFFER_CONSOLE=m
++# CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY is not set
++# CONFIG_FRAMEBUFFER_CONSOLE_ROTATION is not set
++# CONFIG_FONTS is not set
++CONFIG_FONT_8x8=y
++CONFIG_FONT_8x16=y
+ # CONFIG_LOGO is not set
+ CONFIG_SOUND=y
+ # CONFIG_SOUND_OSS_CORE is not set
+diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
+index 0649598..e6f50b3 100755
+--- a/drivers/video/Kconfig
++++ b/drivers/video/Kconfig
+@@ -278,6 +278,9 @@ config LYCHEE_HDMI_SUN3I
+ config LYCHEE_FB_SUN4I
+         tristate "DISP Driver Support(sun4i)"
+         depends on FB && ARCH_SUN4I
++	select FB_CFB_FILLRECT
++	select FB_CFB_COPYAREA
++	select FB_CFB_IMAGEBLIT
+         ---help---
+         default m
+ 
+diff --git a/drivers/video/sun4i/disp/dev_disp.h b/drivers/video/sun4i/disp/dev_disp.h
+index cc75f2e..3dabe0b 100644
+--- a/drivers/video/sun4i/disp/dev_disp.h
++++ b/drivers/video/sun4i/disp/dev_disp.h
+@@ -66,6 +66,7 @@ typedef struct
+     __disp_fb_create_para_t fb_para[FB_MAX];
+ 	wait_queue_head_t       wait[2];
+ 	unsigned long           wait_count[2];
++	__u32 pseudo_palette[16];
+ }fb_info_t;
+ 
+ typedef struct
+diff --git a/drivers/video/sun4i/disp/dev_fb.c b/drivers/video/sun4i/disp/dev_fb.c
+index cfba27e..372df61 100755
+--- a/drivers/video/sun4i/disp/dev_fb.c
++++ b/drivers/video/sun4i/disp/dev_fb.c
+@@ -23,6 +23,9 @@
+ 
+ #include "drv_disp_i.h"
+ #include "dev_disp.h"
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/fb.h>
+ 
+ #ifdef CONFIG_LYCHEE_FB_UMP_SUN4I
+ #include <ump/ump_kernel_interface.h>
+@@ -896,11 +899,13 @@ static int Fb_setcolreg(unsigned regno,unsigned red, unsigned green, unsigned bl
+ 
+         	switch (info->fix.visual) 
+         	{
++                case FB_VISUAL_TRUECOLOR:
+         	case FB_VISUAL_PSEUDOCOLOR:
+         		if (regno < 256) 
+         		{
+         			val = (transp<<24) | (red<<16) | (green<<8) | blue;
+         			BSP_disp_set_palette_table(sel, &val, regno*4, 4);
++		                ((u32 *) info->pseudo_palette)[regno] = val;
+         		}
+         		break;
+ 
+@@ -913,48 +918,6 @@ static int Fb_setcolreg(unsigned regno,unsigned red, unsigned green, unsigned bl
+ 	return 0;
+ }
+ 
+-static int Fb_setcmap(struct fb_cmap *cmap, struct fb_info *info)
+-{
+-    __u32 sel = 0;
+-    
+-	__inf("Fb_setcmap\n"); 
+-	
+-    for(sel = 0; sel < 2; sel++)
+-    {
+-        if(((sel==0) && (g_fbi.fb_mode[info->node] != FB_MODE_SCREEN1))
+-            || ((sel==1) && (g_fbi.fb_mode[info->node] != FB_MODE_SCREEN0)))
+-        {
+-            unsigned int j = 0, val = 0;
+-            unsigned char hred, hgreen, hblue, htransp = 0xff;
+-            unsigned short *red, *green, *blue, *transp;
+-
+-            red = cmap->red;
+-            green = cmap->green;
+-            blue = cmap->blue;
+-            transp = cmap->transp;
+-            
+-        	for (j = 0; j < cmap->len; j++) 
+-        	{
+-        		hred = (*red++)&0xff;
+-        		hgreen = (*green++)&0xff;
+-        		hblue = (*blue++)&0xff;
+-        		if (transp)
+-        		{
+-        			htransp = (*transp++)&0xff;
+-        		}
+-        		else
+-        		{
+-        		    htransp = 0xff;
+-        		}
+-
+-        		val = (htransp<<24) | (hred<<16) | (hgreen<<8) |hblue;
+-        		BSP_disp_set_palette_table(sel, &val, (cmap->start + j) * 4, 4);
+-        	}
+-    	}
+-	}
+-	return 0;
+-}
+-
+ int Fb_blank(int blank_mode, struct fb_info *info)
+ {    
+     __u32 sel = 0;
+@@ -984,9 +947,7 @@ int Fb_blank(int blank_mode, struct fb_info *info)
+ 
+ static int Fb_cursor(struct fb_info *info, struct fb_cursor *cursor)
+ {
+-    __inf("Fb_cursor\n"); 
+-
+-    return 0;
++    return -EINVAL;
+ }
+ 
+ static int Fb_wait_for_vsync(struct fb_info *info)
+@@ -1125,8 +1086,11 @@ static struct fb_ops dispfb_ops =
+ 	.fb_check_var   = Fb_check_var,
+ 	.fb_set_par     = Fb_set_par,
+ 	.fb_setcolreg   = Fb_setcolreg,
+-	.fb_setcmap     = Fb_setcmap,
++	//.fb_setcmap     = Fb_setcmap,
+ 	.fb_blank       = Fb_blank,
++	.fb_fillrect    = cfb_fillrect,
++	.fb_copyarea    = cfb_copyarea,
++	.fb_imageblit   = cfb_imageblit,
+ 	.fb_cursor      = Fb_cursor,
+ };
+ 
+@@ -1369,6 +1333,7 @@ __s32 Fb_Init(__u32 from)
+         	g_fbi.fbinfo[i]->var.xres_virtual    = 800;
+         	g_fbi.fbinfo[i]->var.yres_virtual    = 480*2;
+         	g_fbi.fbinfo[i]->var.nonstd = 0;
++		g_fbi.fbinfo[i]->var.grayscale = 0;
+             g_fbi.fbinfo[i]->var.bits_per_pixel = 32;
+             g_fbi.fbinfo[i]->var.transp.length = 8;
+             g_fbi.fbinfo[i]->var.red.length = 8;
+@@ -1389,9 +1354,15 @@ __s32 Fb_Init(__u32 from)
+             g_fbi.fbinfo[i]->fix.line_length = g_fbi.fbinfo[i]->var.xres_virtual * 4;
+             g_fbi.fbinfo[i]->fix.smem_len = g_fbi.fbinfo[i]->fix.line_length * g_fbi.fbinfo[i]->var.yres_virtual * 2;
+             g_fbi.fbinfo[i]->screen_base = 0x0;
++             g_fbi.fbinfo[i]->pseudo_palette = g_fbi.pseudo_palette;
+             g_fbi.fbinfo[i]->fix.smem_start = 0x0;
++             g_fbi.fbinfo[i]->fix.mmio_start = 0;
++             g_fbi.fbinfo[i]->fix.mmio_len = 0;
++
++             if (fb_alloc_cmap(&g_fbi.fbinfo[i]->cmap, 256, 1) < 0) {
++               return -ENOMEM;
++            }
+ 
+-        	register_framebuffer(g_fbi.fbinfo[i]);
+         }
+         parser_disp_init_para(&(g_fbi.disp_init));
+     }
+@@ -1508,6 +1479,11 @@ __s32 Fb_Init(__u32 from)
+             
+             //fb_draw_colorbar((__u32)g_fbi.fbinfo[i]->screen_base, fb_para.width, fb_para.height*fb_para.buffer_num, &(g_fbi.fbinfo[i]->var));
+         }
++        for(i=0; i<8; i++)
++        {
++            // Register framebuffers after they are initialized
++            register_framebuffer(g_fbi.fbinfo[i]);
++        }
+ 
+         if(g_fbi.disp_init.scaler_mode[0])
+         {
+-- 
+1.7.2.5
+

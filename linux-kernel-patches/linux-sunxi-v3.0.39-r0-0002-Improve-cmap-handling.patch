@@ -1,0 +1,204 @@
+From f1bc1e376be779bb89573f0a66a470ee6cfad41d Mon Sep 17 00:00:00 2001
+From: Jeff Doozan <jeff@doozan.com>
+Date: Sat, 25 Aug 2012 15:12:32 -0400
+Subject: [PATCH 2/2] Improve cmap handling
+None of this work is my own.  This is just a cleaned version of techn's fbcon commits:
+https://github.com/techn/linux-allwinner/tree/wip/allwinner-v3.0-android-v2/fbcon-v2
+
+---
+ drivers/video/sun4i/disp/dev_disp.h |    2 +-
+ drivers/video/sun4i/disp/dev_fb.c   |  115 ++++++++++++++++++++++++++---------
+ 2 files changed, 86 insertions(+), 31 deletions(-)
+
+diff --git a/drivers/video/sun4i/disp/dev_disp.h b/drivers/video/sun4i/disp/dev_disp.h
+index 3dabe0b..56ac351 100644
+--- a/drivers/video/sun4i/disp/dev_disp.h
++++ b/drivers/video/sun4i/disp/dev_disp.h
+@@ -66,7 +66,7 @@ typedef struct
+     __disp_fb_create_para_t fb_para[FB_MAX];
+ 	wait_queue_head_t       wait[2];
+ 	unsigned long           wait_count[2];
+-	__u32 pseudo_palette[16];
++	__u32 pseudo_palette [FB_MAX][16];
+ }fb_info_t;
+ 
+ typedef struct
+diff --git a/drivers/video/sun4i/disp/dev_fb.c b/drivers/video/sun4i/disp/dev_fb.c
+index 372df61..4105c02 100755
+--- a/drivers/video/sun4i/disp/dev_fb.c
++++ b/drivers/video/sun4i/disp/dev_fb.c
+@@ -709,13 +709,23 @@ __s32 var_to_disp_fb(__disp_fb_t *fb, struct fb_var_screeninfo *var, struct fb_f
+ 			var->red.length		= 8;
+ 			var->green.length	= 8;
+ 			var->blue.length	= 8;
+-			var->reserved[1] = DISP_FORMAT_ARGB8888;
++            if (var->transp.offset == var->blue.offset ||
++                var->transp.offset == var->red.offset)
++            {
++                var->reserved[1] = DISP_FORMAT_ARGB888;
++                __inf("Mode:     ARGB888");
++            }
++            else
++            {
++                var->reserved[1] = DISP_FORMAT_ARGB8888;
++                __inf("Mode:     ARGB8888");
++            }
+ 
+ 			if(var->red.offset == 16 && var->green.offset == 8 && var->blue.offset == 0)//argb
+ 			{
+ 			    var->reserved[2] = DISP_SEQ_ARGB;
+ 			    var->reserved[3] = 0;
+- 			}
++            }
+ 			else if(var->blue.offset == 24 && var->green.offset == 16 && var->red.offset == 8)//bgra
+ 			{
+ 			    var->reserved[2] = DISP_SEQ_BGRA;
+@@ -836,7 +846,21 @@ static int Fb_pan_display(struct fb_var_screeninfo *var,struct fb_info *info)
+ 
+ static int Fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)//todo
+ {
+-	return 0;
++    __inf("Fb_check_var: %dx%d %dbits\n", var->xres, var->yres, var->bits_per_pixel);
++    switch (var->bits_per_pixel) {
++    case 16:
++        disp_fb_to_var(DISP_FORMAT_ARGB1555, DISP_SEQ_ARGB, 0, var);
++        break;
++    case 24:
++        disp_fb_to_var(DISP_FORMAT_RGB888, DISP_SEQ_ARGB, 0, var);
++        break;
++    case 32:
++        disp_fb_to_var(DISP_FORMAT_ARGB8888, DISP_SEQ_ARGB, 0, var);
++        break;
++    default:
++        return -EINVAL;
++    }
++    return 0;
+ }
+ 
+ static int Fb_set_par(struct fb_info *info)//todo
+@@ -883,39 +907,70 @@ static int Fb_set_par(struct fb_info *info)//todo
+ 	return 0;
+ }
+  
++static inline u32 convert_bitfield(int val, struct fb_bitfield *bf)
++{
++    u32 mask = ((1 << bf->length) - 1) << bf->offset;
++    return (val << bf->offset) & mask;
++}
+ 
+ static int Fb_setcolreg(unsigned regno,unsigned red, unsigned green, unsigned blue,unsigned transp, struct fb_info *info)
+ {
+     __u32 sel = 0;
+-    
+-	 __inf("Fb_setcolreg,regno=%d,a=%d,r=%d,g=%d,b=%d\n",regno, transp,red, green, blue); 
+ 
+-    for(sel = 0; sel < 2; sel++)
++    if (info->fix.visual != FB_VISUAL_TRUECOLOR)
++        return -EINVAL;
++
++    unsigned int val;
++    val = convert_bitfield(transp, &info->var.transp) |
++        convert_bitfield(red, &info->var.red) |
++        convert_bitfield(green, &info->var.green) |
++        convert_bitfield(blue, &info->var.blue);
++
++    //__inf("Fb_setcolreg,regno=%2d,a=%2X,r=%2X,g=%2X,b=%2X, result=%08X\n",regno, transp,red, green, blue, val);
++
++    if (regno < 16)
+     {
+-        if(((sel==0) && (g_fbi.fb_mode[info->node] != FB_MODE_SCREEN1))
+-            || ((sel==1) && (g_fbi.fb_mode[info->node] != FB_MODE_SCREEN0)))
++        ((u32 *)info->pseudo_palette)[regno] = val;
++    }
++
++    val = (transp<<24) | (red<<16) | (green<<8) | blue;
++    BSP_disp_set_palette_table(sel, &val, regno*4, 4);
++
++    return 0;
++}
++
++static int Fb_setcmap(struct fb_cmap *cmap, struct fb_info *info)
++{
++    __inf("Fb_setcmap, cmap start:%d len:%d, %dbpp\n", cmap->start, cmap->len, info->var.bits_per_pixel);
++    unsigned int j, r = 0;
++    unsigned char hred, hgreen, hblue, htransp = 0xff;
++    unsigned short *red, *green, *blue, *transp;
++
++    red = cmap->red;
++    green = cmap->green;
++    blue = cmap->blue;
++    transp = cmap->transp;
++
++    for (j = 0; j < cmap->len; j++)
++    {
++        hred = *red++;
++        hgreen = *green++;
++        hblue = *blue++;
++        if (transp)
+         {
+-            unsigned int val;
++            htransp = (*transp++)&0xff;
++        }
++        else
++        {
++            htransp = 0xff;
++        }
+ 
+-        	switch (info->fix.visual) 
+-        	{
+-                case FB_VISUAL_TRUECOLOR:
+-        	case FB_VISUAL_PSEUDOCOLOR:
+-        		if (regno < 256) 
+-        		{
+-        			val = (transp<<24) | (red<<16) | (green<<8) | blue;
+-        			BSP_disp_set_palette_table(sel, &val, regno*4, 4);
+-		                ((u32 *) info->pseudo_palette)[regno] = val;
+-        		}
+-        		break;
+-
+-        	default:
+-        		break;
+-        	}
+-    	}
+-	}
++        r = Fb_setcolreg(cmap->start + j, hred, hgreen, hblue, htransp, info);
++        if (r)
++            return r;
++    }
+ 
+-	return 0;
++    return 0;
+ }
+ 
+ int Fb_blank(int blank_mode, struct fb_info *info)
+@@ -1086,7 +1141,7 @@ static struct fb_ops dispfb_ops =
+ 	.fb_check_var   = Fb_check_var,
+ 	.fb_set_par     = Fb_set_par,
+ 	.fb_setcolreg   = Fb_setcolreg,
+-	//.fb_setcmap     = Fb_setcmap,
++	.fb_setcmap     = Fb_setcmap,
+ 	.fb_blank       = Fb_blank,
+ 	.fb_fillrect    = cfb_fillrect,
+ 	.fb_copyarea    = cfb_copyarea,
+@@ -1237,8 +1292,8 @@ __s32 Display_Fb_Release(__u32 fb_id)
+         memset(&g_fbi.fb_para[fb_id], 0, sizeof(__disp_fb_create_para_t));
+         g_fbi.fb_enable[fb_id] = 0;
+         
++        fb_dealloc_cmap(&info->cmap);
+     	Fb_unmap_video_memory(info);
+-
+ 	    return DIS_SUCCESS;
+ 	}
+ 	else
+@@ -1354,7 +1409,7 @@ __s32 Fb_Init(__u32 from)
+             g_fbi.fbinfo[i]->fix.line_length = g_fbi.fbinfo[i]->var.xres_virtual * 4;
+             g_fbi.fbinfo[i]->fix.smem_len = g_fbi.fbinfo[i]->fix.line_length * g_fbi.fbinfo[i]->var.yres_virtual * 2;
+             g_fbi.fbinfo[i]->screen_base = 0x0;
+-             g_fbi.fbinfo[i]->pseudo_palette = g_fbi.pseudo_palette;
++            g_fbi.fbinfo[i]->pseudo_palette = g_fbi.pseudo_palette[i];
+             g_fbi.fbinfo[i]->fix.smem_start = 0x0;
+              g_fbi.fbinfo[i]->fix.mmio_start = 0;
+              g_fbi.fbinfo[i]->fix.mmio_len = 0;
+-- 
+1.7.2.5
+
