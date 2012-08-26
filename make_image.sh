@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=1.2
+VERSION=1.3
 
 # Device to install rescue system on 
 DEST=/dev/sdb
@@ -32,9 +32,8 @@ if [ ! -f $IMAGES/rootfs.cpio.bz2 ]; then
   exit 1
 fi
 
-if [ ! -f  $IMAGES/uInitrd ]; then
-  make
-  mkimage -A arm -O linux -T ramdisk -C bzip2 -a 0 -e 0 -n RescueSystem -d $IMAGES/rootfs.cpio.bz2 $IMAGES/uInitrd
+if [ ! -f  $IMAGES/uInitrd -o $IMAGES/rootfs.cpio.bz2 -nt $IMAGES/uInitrd ]; then
+  mkimage -A arm -O linux -T ramdisk -C bzip2 -a 0 -e 0 -n "RescueSystem $VERSION" -d $IMAGES/rootfs.cpio.bz2 $IMAGES/uInitrd
 fi
 
 
@@ -74,6 +73,7 @@ $SDIR/../output/build/uboot-sun4i/tools/mkimage -A arm -O u-boot -T script -C no
 
 wget https://raw.github.com/doozan/a10-rescue-scripts/master/init-extract-system-bin.sh -O $ROOT/rescue/init-extract-system-bin.sh
 wget https://raw.github.com/doozan/a10-rescue-scripts/master/init-modules.sh -O            $ROOT/rescue/init-modules.sh
+wget https://raw.github.com/doozan/a10-rescue-scripts/master/init-display.sh -O            $ROOT/rescue/init-display.sh
 wget https://raw.github.com/doozan/a10-rescue-scripts/master/autorun-deviceinfo.sh -O      $ROOT/rescue/autorun-deviceinfo.sh
 
 umount $ROOT
